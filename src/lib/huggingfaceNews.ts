@@ -4,7 +4,10 @@
  * Dataset: AndyReas/frontpage-news — 13.1M articles from 90+ outlets (2015-2020)
  */
 
-const DATAVILLE_API_BASE = 'https://app.dataville.com';
+// Requests go through our own same-origin proxy (src/app/api/news/[keyword])
+// rather than hitting app.dataville.com from the browser directly — that avoids
+// CORS and lets the server attach a Dataville API key. See the proxy route.
+const NEWS_PROXY_BASE = '/api/news';
 
 // Political keywords for filtering
 const POLITICAL_KEYWORDS = [
@@ -158,7 +161,7 @@ const CACHE_DURATION = 5 * 60 * 1000;
 
 async function fetchSingleArticle(keyword: string): Promise<ProcessedArticle | null> {
   try {
-    const res = await fetch(`${DATAVILLE_API_BASE}/news/${encodeURIComponent(keyword)}`);
+    const res = await fetch(`${NEWS_PROXY_BASE}/${encodeURIComponent(keyword)}`);
     if (!res.ok) return null;
 
     const json: DatavilleNewsResponse = await res.json();
