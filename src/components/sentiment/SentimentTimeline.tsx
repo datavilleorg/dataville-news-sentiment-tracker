@@ -58,7 +58,7 @@ export default function SentimentTimeline({
         <div>
           <h2 className="text-lg font-bold text-maroon">Sentiment Over Time</h2>
           <p className="text-xs text-maroon/50 mt-1">
-            Real data from HuggingFace frontpage-news dataset (2015-2020)
+            Real data from Dataville API — frontpage-news dataset (2015-2020)
           </p>
         </div>
         <div className="flex gap-2">
@@ -82,7 +82,7 @@ export default function SentimentTimeline({
         <div className="h-64 flex items-center justify-center">
           <div className="text-center">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-maroon mx-auto"></div>
-            <p className="mt-2 text-sm text-maroon/70">Loading news from HuggingFace...</p>
+            <p className="mt-2 text-sm text-maroon/70">Loading news from Dataville API...</p>
           </div>
         </div>
       ) : error ? (

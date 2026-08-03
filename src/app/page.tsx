@@ -160,8 +160,8 @@ export default function PublicSentimentPage() {
               <h3 className="text-[11px] font-semibold uppercase tracking-widest text-maroon/40 mb-3">Data source</h3>
               <div className="text-sm text-maroon/70 space-y-3">
                 <p>
-                  <span className="font-medium text-maroon">HuggingFace frontpage-news</span> — a corpus
-                  of 13.1 million news articles scraped from 90+ English-language outlets.
+                  <span className="font-medium text-maroon">Dataville API</span> — serving the frontpage-news corpus
+                  of 13.1 million news articles from 90+ English-language outlets.
                 </p>
                 <ul className="space-y-2">
                   {[
@@ -176,12 +176,12 @@ export default function PublicSentimentPage() {
                   ))}
                 </ul>
                 <a
-                  href="https://huggingface.co/datasets/AndyReas/frontpage-news"
+                  href="https://app.dataville.com"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1 text-xs text-maroon hover:underline font-medium"
                 >
-                  View dataset on HuggingFace
+                  Explore Dataville API
                   <FiExternalLink className="h-3 w-3" />
                 </a>
               </div>

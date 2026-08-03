@@ -1,12 +1,13 @@
 /**
- * HuggingFace Frontpage News API Service
- * Fetches real news articles from the AndyReas/frontpage-news dataset
- * Dataset: https://huggingface.co/datasets/AndyReas/frontpage-news
- * 13.1M articles from 90+ news outlets (2015-2020)
+ * Dataville News API Service
+ * Fetches political news articles via the Dataville API (frontpage-news dataset)
+ * Dataset: AndyReas/frontpage-news — 13.1M articles from 90+ outlets (2015-2020)
  */
 
-const HF_API_BASE = 'https://datasets-server.huggingface.co';
-const DATASET_NAME = 'AndyReas/frontpage-news';
+// Requests go through our own same-origin proxy (src/app/api/news/[keyword])
+// rather than hitting app.dataville.com from the browser directly — that avoids
+// CORS and lets the server attach a Dataville API key. See the proxy route.
+const NEWS_PROXY_BASE = '/api/news';
 
 // Political keywords for filtering
 const POLITICAL_KEYWORDS = [
@@ -42,15 +43,30 @@ const TOPICS = [
   'Criminal Justice', 'Russia Investigation', 'Impeachment', 'COVID-19', 'Coronavirus'
 ];
 
-export interface HFArticle {
-  title: string;
-  description: string;
-  meta: {
-    article_id: string;
-    outlet: string;
-    date: string; // YYYYMMDD format
+interface DatavilleNewsResponse {
+  status: string;
+  account_state: string;
+  data: {
+    id: string;
+    title: string;
+    body: string;
+    source: string;
+    language: string;
+    last_updated: string;
+    entities: string[];
+    metadata: {
+      outlet: string;
+      outlet_name: string;
+      published_date: string;
+      article_id: string;
+      dataset: string;
+      url: string;
+    };
   };
-  new_article_id: string;
+  usage: {
+    requests_remaining: number;
+    request_limit: number;
+  };
 }
 
 export interface ProcessedArticle {
@@ -117,12 +133,6 @@ export function extractEntities(text: string): { politicians: string[]; organiza
   return { politicians, organizations, topics };
 }
 
-// Check if article is political
-export function isPoliticalArticle(title: string, description: string): boolean {
-  const text = (title + ' ' + description).toLowerCase();
-  return POLITICAL_KEYWORDS.some(keyword => text.includes(keyword));
-}
-
 // Format date from YYYYMMDD to ISO string
 export function formatDate(dateStr: string): string {
   if (!dateStr || dateStr.length !== 8) {
@@ -134,108 +144,89 @@ export function formatDate(dateStr: string): string {
   return new Date(`${year}-${month}-${day}`).toISOString();
 }
 
-// Cache for fetched articles
+const SEARCH_KEYWORDS = [
+  'trump president', 'biden election', 'congress legislation', 'senate vote',
+  'republican democrat', 'supreme court', 'immigration policy', 'healthcare bill',
+  'climate change policy', 'gun control', 'foreign policy russia', 'trade china',
+  'economy unemployment', 'tax reform', 'impeachment investigation', 'Mueller investigation',
+  'election campaign', 'government shutdown', 'military defense', 'nato sanctions',
+  'obama administration', 'white house', 'federal budget deficit', 'coronavirus pandemic',
+  'protest rally', 'border wall', 'kavanaugh confirmation', 'pelosi speaker',
+  'electoral college', 'stimulus package',
+];
+
 let articleCache: ProcessedArticle[] | null = null;
 let cacheTimestamp: number = 0;
-const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+const CACHE_DURATION = 5 * 60 * 1000;
 
-export async function fetchHuggingFaceNews(limit: number = 200): Promise<ProcessedArticle[]> {
-  // Return cached data if available and fresh
+async function fetchSingleArticle(keyword: string): Promise<ProcessedArticle | null> {
+  try {
+    const res = await fetch(`${NEWS_PROXY_BASE}/${encodeURIComponent(keyword)}`);
+    if (!res.ok) return null;
+
+    const json: DatavilleNewsResponse = await res.json();
+    if (json.status !== 'success' || !json.data) return null;
+
+    const { data } = json;
+    const title = data.title?.trim();
+    if (!title || title.length < 20) return null;
+
+    const description = typeof data.body === 'string' ? data.body : '';
+    const fullText = title + ' ' + description;
+    const sentiment = analyzeSentiment(fullText);
+    const entities = extractEntities(fullText);
+
+    return {
+      id: data.id || data.metadata.article_id,
+      title,
+      description,
+      url: data.metadata.url || '',
+      author: data.metadata.outlet_name || 'Unknown',
+      outlet: data.metadata.outlet || 'Unknown',
+      published_at: data.last_updated || formatDate(data.metadata.published_date),
+      polarity_score: Math.round(sentiment.polarity * 100) / 100,
+      political_leaning: Math.round(sentiment.leaning * 100) / 100,
+      confidence: Math.round(sentiment.confidence * 100) / 100,
+      entities,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchDatavilleNews(limit: number = 200): Promise<ProcessedArticle[]> {
   if (articleCache && Date.now() - cacheTimestamp < CACHE_DURATION) {
     return articleCache.slice(0, limit);
   }
 
-  try {
-    // HuggingFace API has a max of 100 rows per request
-    const MAX_PER_REQUEST = 100;
-    const TOTAL_DATASET_SIZE = 13000000;
-    const articles: ProcessedArticle[] = [];
+  console.log(`Fetching news from Dataville API (${SEARCH_KEYWORDS.length} queries)...`);
 
-    // Make multiple requests to get enough political articles
-    const requestsNeeded = Math.ceil((limit * 3) / MAX_PER_REQUEST); // Fetch 3x to filter for political
+  const seen = new Set<string>();
+  const articles: ProcessedArticle[] = [];
 
-    console.log(`Fetching news from HuggingFace (${requestsNeeded} requests)...`);
+  // Fetch in batches of 5 to avoid overwhelming the API
+  for (let i = 0; i < SEARCH_KEYWORDS.length && articles.length < limit; i += 5) {
+    const batch = SEARCH_KEYWORDS.slice(i, i + 5);
+    const results = await Promise.allSettled(batch.map(kw => fetchSingleArticle(kw)));
 
-    for (let i = 0; i < Math.min(requestsNeeded, 5); i++) { // Max 5 requests
-      // Random offset, but leave room for the fetch length
-      const randomOffset = Math.floor(Math.random() * (TOTAL_DATASET_SIZE - MAX_PER_REQUEST));
-
-      const url = `${HF_API_BASE}/rows?dataset=${encodeURIComponent(DATASET_NAME)}&config=default&split=train&offset=${randomOffset}&length=${MAX_PER_REQUEST}`;
-
-      const response = await fetch(url, {
-        headers: {
-          'Accept': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        console.warn(`HuggingFace request ${i + 1} failed: ${response.status}`);
-        continue;
-      }
-
-      const data = await response.json();
-
-      if (!data.rows || !Array.isArray(data.rows)) {
-        continue;
-      }
-
-      // Process rows from this batch
-      for (const row of data.rows) {
-        const article = row.row as HFArticle;
-
-        if (!article.title || !article.meta) continue;
-
-        const title = article.title.trim();
-        const description = article.description?.trim() || '';
-
-        // Filter for political content
-        if (!isPoliticalArticle(title, description)) continue;
-
-        // Skip very short titles
-        if (title.length < 20) continue;
-
-        const fullText = title + ' ' + description;
-        const sentiment = analyzeSentiment(fullText);
-        const entities = extractEntities(fullText);
-
-        articles.push({
-          id: article.new_article_id || article.meta.article_id,
-          title,
-          description,
-          url: `https://web.archive.org/web/*/${article.meta.outlet}`,
-          author: article.meta.outlet?.replace(/\.(com|org|net|co\.uk)$/i, '') || 'Unknown',
-          outlet: article.meta.outlet || 'Unknown',
-          published_at: formatDate(article.meta.date),
-          polarity_score: Math.round(sentiment.polarity * 100) / 100,
-          political_leaning: Math.round(sentiment.leaning * 100) / 100,
-          confidence: Math.round(sentiment.confidence * 100) / 100,
-          entities,
-        });
-
-        if (articles.length >= limit) break;
-      }
-
-      if (articles.length >= limit) break;
-
-      // Small delay between requests to be nice to the API
-      if (i < requestsNeeded - 1) {
-        await new Promise(resolve => setTimeout(resolve, 100));
+    for (const result of results) {
+      if (result.status === 'fulfilled' && result.value && !seen.has(result.value.id)) {
+        seen.add(result.value.id);
+        articles.push(result.value);
       }
     }
 
-    // Cache the results
+    if (i + 5 < SEARCH_KEYWORDS.length) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+  }
+
+  if (articles.length > 0) {
     articleCache = articles;
     cacheTimestamp = Date.now();
-
-    return articles;
-  } catch (error) {
-    console.error('Error fetching from HuggingFace:', error);
-    // Return cached data if available, even if stale
-    if (articleCache) {
-      return articleCache.slice(0, limit);
-    }
-    throw error;
   }
+
+  return articles;
 }
 
 // Generate timeline data from articles

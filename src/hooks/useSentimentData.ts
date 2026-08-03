@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
-  fetchHuggingFaceNews,
+  fetchDatavilleNews,
   generateTimelineFromArticles,
   generateLeaderboardFromArticles,
   generateTopicDistribution,
@@ -52,7 +52,7 @@ export function useSentimentData(): UseSentimentDataReturn {
     setIsLoading(true);
     setError(null);
 
-    globalFetchPromise = fetchHuggingFaceNews(300);
+    globalFetchPromise = fetchDatavilleNews(300);
 
     try {
       const data = await globalFetchPromise;
