@@ -2,7 +2,7 @@
 
 A standalone Next.js demo showing how to build a **political news sentiment tracker** — keyword-based NLP sentiment scoring across 13 million real news articles, queryable by entity, topic, outlet, and date range.
 
-Live demo: [app.dataville.com/use-cases/sentiment-tracker](https://app.dataville.com/use-cases/sentiment-tracker)
+Live demo: [app.dataville.com/use-cases/sentiment-tracker](https://app.dataville.com/use-cases/sentiment-tracker) · [All demos](https://app.dataville.com/demos) · [Dataville docs](https://docs.dataville.com) · [Get a free API key](https://app.dataville.com/api-keys)
 
 ---
 
